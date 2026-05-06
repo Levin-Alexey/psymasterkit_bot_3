@@ -9,24 +9,34 @@ from dotenv import load_dotenv
 
 # Загружаем настройки из .env
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-DB_DSN = os.getenv("DB_DSN")
+def get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Environment variable {name} is not set")
+    return value
+
+BOT_TOKEN = get_required_env("BOT_TOKEN")
+DB_DSN = get_required_env("DB_DSN")
+
+def get_asyncpg_dsn(dsn: str) -> str:
+    # asyncpg accepts postgresql:// or postgres:// schemes.
+    return dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 dp = Dispatcher()
 
-async def add_user_to_db(user_id: int, username: str):
+async def add_user_to_db(user_id: int, username: str | None):
     """
     Добавляет пользователя в БД. 
     Если он пришел 16 мая или позже - заполняет историю старыми сообщениями (отсечение).
     """
-    conn = await asyncpg.connect(DB_DSN)
+    conn = await asyncpg.connect(get_asyncpg_dsn(DB_DSN))
     try:
         # 1. Записываем пользователя (или игнорируем, если он уже есть)
         await conn.execute("""
             INSERT INTO users_3db (user_id, username)
             VALUES ($1, $2)
             ON CONFLICT (user_id) DO NOTHING;
-        """, user_id, username)
+        """, user_id, username or "")
         
         # 2. ЛОГИКА ОТСЕЧЕНИЯ СТАРЫХ ПИСЕМ (16 мая)
         # Внимание: проверь год (2026 или 2024), чтобы он совпадал с датами твоего запуска!
@@ -45,6 +55,9 @@ async def add_user_to_db(user_id: int, username: str):
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
+    if not message.from_user:
+        return
+
     user_id = message.from_user.id
     username = message.from_user.username
     

@@ -7,9 +7,20 @@ from dotenv import load_dotenv
 
 # Загружаем настройки
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-DB_DSN = os.getenv("DB_DSN")
+
+def get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Environment variable {name} is not set")
+    return value
+
+BOT_TOKEN = get_required_env("BOT_TOKEN")
+DB_DSN = get_required_env("DB_DSN")
 SECRET_N8N_TOKEN = "super_secret_123"  # Замени на свой сложный пароль и укажи его в n8n
+
+def get_asyncpg_dsn(dsn: str) -> str:
+    # asyncpg accepts postgresql:// or postgres:// schemes.
+    return dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 app = FastAPI()
 
@@ -24,7 +35,7 @@ async def run_mailing_in_background(current_msg_id: int):
     print(f"🔄 Фоновая рассылка (msg_id={current_msg_id}) запущена...")
     
     # Открываем свое подключение к базе для фоновой задачи
-    conn = await asyncpg.connect(DB_DSN)
+    conn = await asyncpg.connect(get_asyncpg_dsn(DB_DSN))
     try:
         users = await conn.fetch("SELECT user_id FROM users_3db WHERE is_active = true")
         total_sent = 0
