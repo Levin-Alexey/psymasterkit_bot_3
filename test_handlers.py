@@ -48,9 +48,9 @@ QUESTIONS = {
 }
 
 TRANSITIONS = {
-    5: "<b>ПРЕДНАЗНАЧЕНИЕ (смысловой затык)</b>\n\nВ конце этого блока посчитайте, сколько у вас получилось баллов по теме предназначения.",
-    9: "<b>ОТНОШЕНИЯ (коммуникативный затык)</b>\n\nВ конце этого блока посчитайте, сколько у вас получилось баллов по теме отношений.",
-    13: "<b>ЯРКОСТЬ ЖИЗНИ (эмоциональный затык)</b>\n\nВ конце этого блока посчитайте, сколько у вас получилось баллов по теме яркость жизни."
+    5: "<b>ПРЕДНАЗНАЧЕНИЕ</b>\n\n",
+    9: "<b>ОТНОШЕНИЯ</b>\n\n",
+    13: "<b>ЯРКОСТЬ ЖИЗНИ</b>\n\n"
 }
 
 # ==========================================
@@ -58,11 +58,11 @@ TRANSITIONS = {
 # ==========================================
 def get_question_keyboard(question_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="А — почти никогда (1 балл)", callback_data=f"ans_{question_id}_1")],
-        [InlineKeyboardButton(text="Б — редко (2 балла)", callback_data=f"ans_{question_id}_2")],
-        [InlineKeyboardButton(text="В — иногда (3 балла)", callback_data=f"ans_{question_id}_3")],
-        [InlineKeyboardButton(text="Г — часто (4 балла)", callback_data=f"ans_{question_id}_4")],
-        [InlineKeyboardButton(text="Д — почти всегда (5 баллов)", callback_data=f"ans_{question_id}_5")]
+        [InlineKeyboardButton(text="🟢 А — почти никогда (1 балл)", callback_data=f"ans_{question_id}_1")],
+        [InlineKeyboardButton(text="🟡 Б — редко (2 балла)", callback_data=f"ans_{question_id}_2")],
+        [InlineKeyboardButton(text="🟠 В — иногда (3 балла)", callback_data=f"ans_{question_id}_3")],
+        [InlineKeyboardButton(text="🔴 Г — часто (4 балла)", callback_data=f"ans_{question_id}_4")],
+        [InlineKeyboardButton(text="🚨 Д — почти всегда (5 баллов)", callback_data=f"ans_{question_id}_5")]
     ])
 
 # ==========================================
@@ -238,13 +238,12 @@ async def confirm_phone(callback: CallbackQuery, state: FSMContext):
         conclusion = f"Сферы {cats_str} набрали больше всего баллов. Значит, напряжение проявляется сразу в нескольких частях жизни."
 
     result_text = (
-        "✅ <b>Спасибо! Номер успешно сохранен.</b>\n\n"
-        "А вот и расшифровка ваших результатов теста:\n\n"
-        f"💰 <b>Деньги: {f_score} баллов</b>\n{get_status_text(f_score)}\n\n"
-        f"🎯 <b>Предназначение: {p_score} баллов</b>\n{get_status_text(p_score)}\n\n"
-        f"🤝 <b>Отношения: {r_score} баллов</b>\n{get_status_text(r_score)}\n\n"
-        f"🌟 <b>Яркость жизни: {l_score} баллов</b>\n{get_status_text(l_score)}\n\n"
-        "〰️〰️〰️〰️〰️\n"
+        "📊 <b>Ваша расшифровка по тесту</b>\n\n"
+        f"💰 <b>Деньги — {f_score} баллов</b>\n{get_status_text(f_score)}\n\n"
+        f"🎯 <b>Предназначение — {p_score} баллов</b>\n{get_status_text(p_score)}\n\n"
+        f"🤝 <b>Отношения — {r_score} баллов</b>\n{get_status_text(r_score)}\n\n"
+        f"🌟 <b>Яркость жизни — {l_score} баллов</b>\n{get_status_text(l_score)}\n\n"
+        "━━━━━━━━━━━━━━\n"
         f"<b>Главный вывод:</b>\n{conclusion}"
     )
 
@@ -252,7 +251,14 @@ async def confirm_phone(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="Как выровнять все сферы жизни? ⚖️", callback_data="how_to_balance")]
     ])
 
-    await callback.message.edit_text(result_text, reply_markup=kb_balance)
+    await callback.message.edit_text("✅ <b>Спасибо! Номер успешно сохранен.</b>")
+
+    await callback.message.answer_photo(
+        photo="https://www.image2url.com/r2/default/images/1778075469130-a19094c1-b70b-4bd6-be70-8d98ee65dc63.png",
+        caption="✨ <b>Ваши результаты готовы</b>"
+    )
+
+    await callback.message.answer(result_text, reply_markup=kb_balance)
     await state.clear()
 
 # ==========================================
@@ -261,8 +267,28 @@ async def confirm_phone(callback: CallbackQuery, state: FSMContext):
 @test_router.callback_query(F.data == "how_to_balance")
 async def process_how_to_balance(callback: CallbackQuery):
     await callback.answer()
-    
+
+    kb_open_day = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="КАНАЛ OPEN DAY", url="https://t.me/freemoneymasterkit/7169")]
+    ])
+
     await callback.message.answer(
-        "<b>Здесь будет полезная информация и следующий шаг воронки! 🚀</b>\n\n"
-        "Скоро мы расскажем, как прийти к балансу во всех этих сферах."
+        "<b>Как выровнять все сферы жизни?</b>\n\n"
+        "За каждой из сфер на самом деле стоит не отдельная проблема.\n\n"
+        "А одна и та же внутренняя модель - та самая Персона, через которую вы живете.\n\n"
+        "Это не характер и не обстоятельства.\n\n"
+        "Это привычный способ:\n"
+        "- принимать решения\n"
+        "- реагировать\n"
+        "- строить отношения с деньгами, людьми, собой\n\n"
+        "Когда-то он помогал вам справляться и быть сильным. Но со временем начинает ограничивать и проявляется сразу в разных сферах жизни.\n\n"
+        "Поэтому попытки «починить» что-то одно часто не дают устойчивого результата.\n\n"
+        "На Open Day от Master Kit мы работаем именно с этим уровнем - комплексно.\n\n"
+        "Через:\n"
+        "- интерактивные воркшопы\n"
+        "- практики\n"
+        "- работу в группах\n\n"
+        "Чтобы вы не просто поняли, а увидели, как меняется вся система.\n\n"
+        "Подробнее об Open Day можно узнать в официальном Телеграм-канале мероприятия.",
+        reply_markup=kb_open_day,
     )
