@@ -8,7 +8,11 @@ from aiogram.enums import ParseMode
 from aiogram.types import Message
 from aiogram.filters import CommandStart
 from dotenv import load_dotenv
+from aiogram.filters import CommandStart
 
+
+# ДОБАВЛЯЕМ ИМПОРТ НАШЕГО РОУТЕРА
+from test_handlers import test_router
 # Загружаем настройки из .env
 load_dotenv()
 def get_required_env(name: str) -> str:
@@ -25,7 +29,7 @@ def get_asyncpg_dsn(dsn: str) -> str:
     return dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 dp = Dispatcher()
-
+dp.include_router(test_router)
 async def add_user_to_db(user_id: int, username: str | None):
     """
     Добавляет пользователя в БД. 

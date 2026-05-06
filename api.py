@@ -1,10 +1,12 @@
 import os
 import asyncio
+import json
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
 # Загружаем настройки
@@ -49,8 +51,9 @@ async def run_mailing_in_background(current_msg_id: int):
             user_id = user['user_id']
             
             # Ищем пропущенные/актуальные сообщения для юзера
+            # ВАЖНО: Добавили m.inline_buttons в запрос!
             missing_messages = await conn.fetch("""
-                SELECT m.msg_id, m.text_content, m.image_url
+                SELECT m.msg_id, m.text_content, m.image_url, m.inline_buttons
                 FROM messages_3db m
                 WHERE m.msg_id <= $1
                 AND m.msg_id NOT IN (
@@ -61,11 +64,38 @@ async def run_mailing_in_background(current_msg_id: int):
             
             for msg in missing_messages:
                 try:
-                    # Отправляем сообщение
+                    # 1. СОБИРАЕМ КЛАВИАТУРУ (если она есть в БД)
+                    reply_markup = None
+                    if msg['inline_buttons']:
+                        # Парсим JSONB из базы
+                        buttons_data = json.loads(msg['inline_buttons']) if isinstance(msg['inline_buttons'], str) else msg['inline_buttons']
+                        
+                        keyboard = []
+                        for row in buttons_data:
+                            kb_row = []
+                            for btn in row:
+                                kb_row.append(InlineKeyboardButton(
+                                    text=btn['text'], 
+                                    callback_data=btn.get('callback_data'), 
+                                    url=btn.get('url')
+                                ))
+                            keyboard.append(kb_row)
+                        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+                    # 2. ОТПРАВЛЯЕМ СООБЩЕНИЕ (с клавиатурой и HTML)
                     if msg['image_url']:
-                        await bot.send_photo(chat_id=user_id, photo=msg['image_url'], caption=msg['text_content'])
+                        await bot.send_photo(
+                            chat_id=user_id, 
+                            photo=msg['image_url'], 
+                            caption=msg['text_content'],
+                            reply_markup=reply_markup
+                        )
                     else:
-                        await bot.send_message(chat_id=user_id, text=msg['text_content'])
+                        await bot.send_message(
+                            chat_id=user_id, 
+                            text=msg['text_content'],
+                            reply_markup=reply_markup
+                        )
                     
                     # Фиксируем в логах
                     await conn.execute("""
@@ -77,18 +107,12 @@ async def run_mailing_in_background(current_msg_id: int):
                     total_sent += 1
                     
                     # 🛑 ЗАЩИТА №1: Пауза между сообщениями ОДНОМУ юзеру
-                    # Если человеку летит "догон" из 5 писем, они придут с разницей в 2 секунды.
-                    # Это убережет от ошибки Telegram "Too Many Requests: retry after X"
                     await asyncio.sleep(2) 
                     
                 except Exception as e:
                     print(f"❌ Ошибка отправки юзеру {user_id}: {e}")
-                    # Опционально: если ошибка 'Bot was blocked by the user', 
-                    # можно делать UPDATE users_3db SET is_active = false WHERE user_id = $1
                     
             # 🛑 ЗАЩИТА №2: Пауза между РАЗНЫМИ юзерами
-            # Лимит Telegram - 30 сообщений в секунду всем пользователям.
-            # 0.05 секунды = максимум 20 пользователей в секунду. Мы в полной безопасности.
             await asyncio.sleep(0.05)
             
         print(f"✅ Фоновая рассылка завершена! Отправлено сообщений: {total_sent}")
