@@ -3,6 +3,8 @@ import asyncio
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
 # Загружаем настройки
@@ -25,7 +27,10 @@ def get_asyncpg_dsn(dsn: str) -> str:
 app = FastAPI()
 
 # Инициализируем бота ТОЛЬКО для отправки сообщений (без Dispatcher и поллинга)
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+)
 
 async def run_mailing_in_background(current_msg_id: int):
     """

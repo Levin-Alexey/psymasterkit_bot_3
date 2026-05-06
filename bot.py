@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 import asyncpg
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.types import Message
 from aiogram.filters import CommandStart
 from dotenv import load_dotenv
@@ -85,11 +87,13 @@ async def cmd_start(message: Message):
         "Но хорошая новость в том, что это можно увидеть.\n\n"
         "А когда вы это видите - появляется возможность выйти из этого круга.\n\n"
         "Как раз про это мы будем говорить дальше👇🏼",
-        parse_mode="HTML",
     )
 
 async def main():
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     print("🤖 Бот запущен (Режим Polling)...")
     try:
         # Запускаем прослушку Telegram
