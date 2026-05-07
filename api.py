@@ -88,13 +88,30 @@ async def run_mailing_in_background(current_msg_id: int):
 
                         # 2. ОТПРАВЛЯЕМ СООБЩЕНИЕ
                         if msg['image_url']:
-                            await bot.send_photo(
-                                chat_id=user_id, 
-                                photo=msg['image_url'], 
-                                caption=clean_text,
-                                reply_markup=reply_markup
-                            )
+                            # Проверяем длину текста для картинки
+                            if len(clean_text) <= 1024:
+                                # Если текст влезает, отправляем одним куском (картинка + текст + кнопки)
+                                await bot.send_photo(
+                                    chat_id=user_id, 
+                                    photo=msg['image_url'], 
+                                    caption=clean_text,
+                                    reply_markup=reply_markup
+                                )
+                            else:
+                                # ТЕКСТ СЛИШКОМ ДЛИННЫЙ! 
+                                # Отправляем сначала голую картинку...
+                                await bot.send_photo(
+                                    chat_id=user_id, 
+                                    photo=msg['image_url']
+                                )
+                                # ...а затем сразу обычное текстовое сообщение (с кнопками)
+                                await bot.send_message(
+                                    chat_id=user_id, 
+                                    text=clean_text,
+                                    reply_markup=reply_markup
+                                )
                         else:
+                            # Обычный текст без картинки
                             await bot.send_message(
                                 chat_id=user_id, 
                                 text=clean_text,
