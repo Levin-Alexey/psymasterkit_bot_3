@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 import asyncpg
+import traceback  # <--- ВАЖНО: для отлова скрытых ошибок
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -39,87 +40,95 @@ async def run_mailing_in_background(current_msg_id: int):
     Эта функция работает в фоне. Она сама открывает БД, 
     рассылает сообщения с нужными паузами и закрывает БД.
     """
-    print(f"🔄 Фоновая рассылка (msg_id={current_msg_id}) запущена...")
+    # flush=True заставляет логи появляться мгновенно
+    print(f"🔄 Фоновая рассылка (msg_id={current_msg_id}) запущена...", flush=True)
     
-    # Открываем свое подключение к базе для фоновой задачи
-    conn = await asyncpg.connect(get_asyncpg_dsn(DB_DSN))
     try:
-        users = await conn.fetch("SELECT user_id FROM users_3db WHERE is_active = true")
-        total_sent = 0
-        
-        for user in users:
-            user_id = user['user_id']
+        # Открываем свое подключение к базе для фоновой задачи
+        conn = await asyncpg.connect(get_asyncpg_dsn(DB_DSN))
+        try:
+            users = await conn.fetch("SELECT user_id FROM users_3db WHERE is_active = true")
+            total_sent = 0
             
-            # Ищем пропущенные/актуальные сообщения для юзера
-            # ВАЖНО: Добавили m.inline_buttons в запрос!
-            missing_messages = await conn.fetch("""
-                SELECT m.msg_id, m.text_content, m.image_url, m.inline_buttons
-                FROM messages_3db m
-                WHERE m.msg_id <= $1
-                AND m.msg_id NOT IN (
-                    SELECT msg_id FROM send_logs_3db WHERE user_id = $2
-                )
-                ORDER BY m.msg_id ASC;
-            """, current_msg_id, user_id)
-            
-            for msg in missing_messages:
-                try:
-                    # 1. СОБИРАЕМ КЛАВИАТУРУ (если она есть в БД)
-                    reply_markup = None
-                    if msg['inline_buttons']:
-                        # Парсим JSONB из базы
-                        buttons_data = json.loads(msg['inline_buttons']) if isinstance(msg['inline_buttons'], str) else msg['inline_buttons']
-                        
-                        keyboard = []
-                        for row in buttons_data:
-                            kb_row = []
-                            for btn in row:
-                                kb_row.append(InlineKeyboardButton(
-                                    text=btn['text'], 
-                                    callback_data=btn.get('callback_data'), 
-                                    url=btn.get('url')
-                                ))
-                            keyboard.append(kb_row)
-                        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+            for user in users:
+                user_id = user['user_id']
+                
+                # Ищем пропущенные/актуальные сообщения для юзера
+                missing_messages = await conn.fetch("""
+                    SELECT m.msg_id, m.text_content, m.image_url, m.inline_buttons
+                    FROM messages_3db m
+                    WHERE m.msg_id <= $1
+                    AND m.msg_id NOT IN (
+                        SELECT msg_id FROM send_logs_3db WHERE user_id = $2
+                    )
+                    ORDER BY m.msg_id ASC;
+                """, current_msg_id, user_id)
+                
+                for msg in missing_messages:
+                    try:
+                        # 1. СОБИРАЕМ КЛАВИАТУРУ
+                        reply_markup = None
+                        if msg['inline_buttons']:
+                            buttons_data = json.loads(msg['inline_buttons']) if isinstance(msg['inline_buttons'], str) else msg['inline_buttons']
+                            
+                            keyboard = []
+                            for row in buttons_data:
+                                kb_row = []
+                                for btn in row:
+                                    kb_row.append(InlineKeyboardButton(
+                                        text=btn['text'], 
+                                        callback_data=btn.get('callback_data'), 
+                                        url=btn.get('url')
+                                    ))
+                                keyboard.append(kb_row)
+                            reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-                    # 2. ОТПРАВЛЯЕМ СООБЩЕНИЕ (с клавиатурой и HTML)
-                    if msg['image_url']:
-                        await bot.send_photo(
-                            chat_id=user_id, 
-                            photo=msg['image_url'], 
-                            caption=msg['text_content'],
-                            reply_markup=reply_markup
-                        )
-                    else:
-                        await bot.send_message(
-                            chat_id=user_id, 
-                            text=msg['text_content'],
-                            reply_markup=reply_markup
-                        )
-                    
-                    # Фиксируем в логах
-                    await conn.execute("""
-                        INSERT INTO send_logs_3db (user_id, msg_id)
-                        VALUES ($1, $2)
-                        ON CONFLICT DO NOTHING;
-                    """, user_id, msg['msg_id'])
-                    
-                    total_sent += 1
-                    
-                    # 🛑 ЗАЩИТА №1: Пауза между сообщениями ОДНОМУ юзеру
-                    await asyncio.sleep(2) 
-                    
-                except Exception as e:
-                    print(f"❌ Ошибка отправки юзеру {user_id}: {e}")
-                    
-            # 🛑 ЗАЩИТА №2: Пауза между РАЗНЫМИ юзерами
-            await asyncio.sleep(0.05)
+                        # БРОНЯ: чистим текстовые слеши \n в реальные абзацы
+                        clean_text = msg['text_content'].replace('\\n', '\n')
+
+                        # 2. ОТПРАВЛЯЕМ СООБЩЕНИЕ
+                        if msg['image_url']:
+                            await bot.send_photo(
+                                chat_id=user_id, 
+                                photo=msg['image_url'], 
+                                caption=clean_text,
+                                reply_markup=reply_markup
+                            )
+                        else:
+                            await bot.send_message(
+                                chat_id=user_id, 
+                                text=clean_text,
+                                reply_markup=reply_markup
+                            )
+                        
+                        # Фиксируем в логах
+                        await conn.execute("""
+                            INSERT INTO send_logs_3db (user_id, msg_id)
+                            VALUES ($1, $2)
+                            ON CONFLICT DO NOTHING;
+                        """, user_id, msg['msg_id'])
+                        
+                        total_sent += 1
+                        print(f"✉️ Успешно отправлено msg_{msg['msg_id']} юзеру {user_id}", flush=True)
+                        
+                        # Пауза между сообщениями ОДНОМУ юзеру
+                        await asyncio.sleep(2) 
+                        
+                    except Exception as e:
+                        print(f"❌ Ошибка отправки юзеру {user_id}: {e}", flush=True)
+                        
+                # Пауза между РАЗНЫМИ юзерами
+                await asyncio.sleep(0.05)
+                
+            print(f"✅ Фоновая рассылка завершена! Отправлено сообщений: {total_sent}", flush=True)
+        
+        finally:
+            await conn.close()
             
-        print(f"✅ Фоновая рассылка завершена! Отправлено сообщений: {total_sent}")
-    
-    finally:
-        # Обязательно закрываем соединение после конца рассылки
-        await conn.close()
+    except Exception as e:
+        # ЕСЛИ ЧТО-ТО УПАДЕТ ГЛОБАЛЬНО - МЫ ЭТО УВИДИМ
+        print(f"💥 КРИТИЧЕСКАЯ ОШИБКА ФОНОВОЙ ЗАДАЧИ: {e}", flush=True)
+        traceback.print_exc()
 
 @app.post("/webhook/trigger-mailing")
 async def trigger_mailing(
@@ -133,7 +142,7 @@ async def trigger_mailing(
     if token != SECRET_N8N_TOKEN:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Передаем рассылку в фоновую задачу и сразу отвечаем n8n.
+    # Передаем рассылку в фоновую задачу
     background_tasks.add_task(run_mailing_in_background, current_msg_id)
 
     return {
