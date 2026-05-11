@@ -84,7 +84,7 @@ async def add_user_to_db(user_id: int, username: str | None):
         # Отсечение 16 мая
         deadline_date = datetime(2026, 5, 16) 
         if datetime.now() >= deadline_date:
-            for msg_id in range(1, 11):
+            for msg_id in range(1, 18):
                 await conn.execute("""
                     INSERT INTO send_logs_3db (user_id, msg_id)
                     VALUES ($1, $2)
