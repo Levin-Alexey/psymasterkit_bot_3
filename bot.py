@@ -134,9 +134,31 @@ async def catch_up_user(user_id: int, bot: Bot):
                 
                 # Отправляем
                 if msg['image_url']:
-                    await bot.send_photo(chat_id=user_id, photo=msg['image_url'], caption=clean_text, reply_markup=reply_markup)
+                    # Проверяем лимит Телеграма (1024 символа для картинки)
+                    if len(clean_text) <= 1024:
+                        await bot.send_photo(
+                            chat_id=user_id, 
+                            photo=msg['image_url'], 
+                            caption=clean_text, 
+                            reply_markup=reply_markup
+                        )
+                    else:
+                        # Текст слишком длинный: шлем картинку, потом текст с кнопками
+                        await bot.send_photo(
+                            chat_id=user_id, 
+                            photo=msg['image_url']
+                        )
+                        await bot.send_message(
+                            chat_id=user_id, 
+                            text=clean_text, 
+                            reply_markup=reply_markup
+                        )
                 else:
-                    await bot.send_message(chat_id=user_id, text=clean_text, reply_markup=reply_markup)
+                    await bot.send_message(
+                        chat_id=user_id, 
+                        text=clean_text, 
+                        reply_markup=reply_markup
+                    )
                     
                 # Пишем в лог
                 await conn.execute("""
