@@ -81,10 +81,12 @@ async def add_user_to_db(user_id: int, username: str | None):
             ON CONFLICT (user_id) DO NOTHING;
         """, user_id, username or "")
         
-        # Отсечение 16 мая
+        # Отсечение 16 мая (msg_id=2 пропускаем — он всегда отправляется новичкам)
         deadline_date = datetime(2026, 5, 16) 
         if datetime.now() >= deadline_date:
             for msg_id in range(1, 18):
+                if msg_id == 2:
+                    continue
                 await conn.execute("""
                     INSERT INTO send_logs_3db (user_id, msg_id)
                     VALUES ($1, $2)
