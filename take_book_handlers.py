@@ -28,7 +28,7 @@ class BookPhoneState(StatesGroup):
 async def ask_for_book_phone(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer(
-        "Оставьте свой номер телефона, и мы вышлем книгу «Лабиринт, у которого нет стен»"
+        "Напишите свой номер телефона в чат ниже, и мы вышлем книгу «Лабиринт, у которого нет стен» ⤵️"
     )
     await state.set_state(BookPhoneState.waiting_for_phone)
 
@@ -36,7 +36,7 @@ async def ask_for_book_phone(callback: CallbackQuery, state: FSMContext):
 @book_router.message(Command("take_book"))
 async def cmd_take_book(message: Message, state: FSMContext):
     await message.answer(
-        "Оставьте свой номер телефона, и мы вышлем книгу «Лабиринт, у которого нет стен»"
+        "Напишите свой номер телефона в чат ниже, и мы вышлем книгу «Лабиринт, у которого нет стен» ⤵️"
     )
     await state.set_state(BookPhoneState.waiting_for_phone)
 
