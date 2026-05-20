@@ -2,6 +2,7 @@ import os
 import asyncpg
 import aiohttp
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -27,6 +28,14 @@ class BookPhoneState(StatesGroup):
 async def ask_for_book_phone(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer(
+        "Оставьте свой номер телефона, и мы вышлем книгу «Лабиринт, у которого нет стен»"
+    )
+    await state.set_state(BookPhoneState.waiting_for_phone)
+
+
+@book_router.message(Command("take_book"))
+async def cmd_take_book(message: Message, state: FSMContext):
+    await message.answer(
         "Оставьте свой номер телефона, и мы вышлем книгу «Лабиринт, у которого нет стен»"
     )
     await state.set_state(BookPhoneState.waiting_for_phone)
