@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 # Подключаем роутер с тестами
 from test_handlers import test_router
 from links_handlers import links_router
+from take_book_handlers import book_router
 
 load_dotenv()
 def get_required_env(name: str) -> str:
@@ -30,6 +31,7 @@ def get_asyncpg_dsn(dsn: str) -> str:
 dp = Dispatcher()
 dp.include_router(test_router)
 dp.include_router(links_router)
+dp.include_router(book_router)
 
 # ==========================================
 # 1. РАСПИСАНИЕ (Дубль из n8n)
