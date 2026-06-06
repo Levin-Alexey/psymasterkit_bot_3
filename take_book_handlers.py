@@ -27,16 +27,46 @@ class BookPhoneState(StatesGroup):
 @book_router.callback_query(F.data == "take_book")
 async def ask_for_book_phone(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.answer(
-        "Напишите свой номер телефона в чат ниже, и мы вышлем книгу «Лабиринт, у которого нет стен» ⤵️"
+    if not callback.message:
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оставить номер телефона", callback_data="leave_phone_book")],
+        ]
     )
-    await state.set_state(BookPhoneState.waiting_for_phone)
+
+    await callback.message.answer(
+        "<b>Оставьте свой номер телефона, и мы отправим вам доступ к аудиокниге Дарьи Трутневой.</b>\n\n"
+        "После этого вы сможете начать слушать её в удобное время — дома, в машине, на прогулке или по дороге на работу.\n\n"
+        "Номер телефона нужен только для отправки доступа к вашему подарку 👇🏼",
+        reply_markup=kb,
+    )
 
 
 @book_router.message(Command("take_book"))
 async def cmd_take_book(message: Message, state: FSMContext):
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оставить номер телефона", callback_data="leave_phone_book")],
+        ]
+    )
+
     await message.answer(
-        "Напишите свой номер телефона в чат ниже, и мы вышлем книгу «Лабиринт, у которого нет стен» ⤵️"
+        "<b>Оставьте свой номер телефона, и мы отправим вам доступ к аудиокниге Дарьи Трутневой.</b>\n\n"
+        "После этого вы сможете начать слушать её в удобное время — дома, в машине, на прогулке или по дороге на работу.\n\n"
+        "Номер телефона нужен только для отправки доступа к вашему подарку 👇🏼",
+        reply_markup=kb,
+    )
+
+
+@book_router.callback_query(F.data == "leave_phone_book")
+async def start_book_phone_collection(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not callback.message:
+        return
+    await callback.message.answer(
+        "Напишите свой номер телефона в чат ниже, и мы отправим доступ к аудиокниге ⤵️"
     )
     await state.set_state(BookPhoneState.waiting_for_phone)
 
@@ -64,6 +94,8 @@ async def process_book_phone_input(message: Message, state: FSMContext):
 @book_router.callback_query(F.data == "phone_edit_book", BookPhoneState.waiting_for_confirmation)
 async def edit_book_phone(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not callback.message:
+        return
     await callback.message.edit_text("Пожалуйста, введите ваш номер телефона еще раз:")
     await state.set_state(BookPhoneState.waiting_for_phone)
 
@@ -71,6 +103,8 @@ async def edit_book_phone(callback: CallbackQuery, state: FSMContext):
 @book_router.callback_query(F.data == "phone_correct_book", BookPhoneState.waiting_for_confirmation)
 async def confirm_book_phone(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not callback.message:
+        return
 
     user_data = await state.get_data()
     phone = user_data.get("phone")
@@ -137,12 +171,18 @@ async def confirm_book_phone(callback: CallbackQuery, state: FSMContext):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Забрать книгу",
-                    url="https://t.me/Masterkit7_bot?start=c1779023999229-ds",
+                    text="Получить книгу",
+                    url="https://drive.google.com/file/d/1_zCI8iT2lKA09ZA5g-PebP8yetTqjSAJ/view",
                 )
             ]
         ]
     )
 
-    await callback.message.answer("Спасибо, желаем приятного чтения и быстрых трансформаций ❤️", reply_markup=kb_book)
+    await callback.message.answer(
+        "🎉 <b>Готово!</b>\n\n"
+        "Ваша аудиокнига уже ждёт вас.\n\n"
+        "Сохраняйте ссылку и начинайте слушать.\n\n"
+        "Желаем вам интересных открытий, неожиданных осознаний и новых взглядов на привычные ситуации ❤️",
+        reply_markup=kb_book,
+    )
     await state.clear()

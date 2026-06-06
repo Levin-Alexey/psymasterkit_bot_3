@@ -22,6 +22,7 @@ def get_required_env(name: str) -> str:
 BOT_TOKEN = get_required_env("BOT_TOKEN")
 DB_DSN = get_required_env("DB_DSN")
 SECRET_N8N_TOKEN = "super_secret_123"  # Замени на свой сложный пароль и укажи его в n8n
+MIN_ACTIVE_MSG_ID = 36
 
 def get_asyncpg_dsn(dsn: str) -> str:
     # asyncpg accepts postgresql:// or postgres:// schemes.
@@ -58,11 +59,12 @@ async def run_mailing_in_background(current_msg_id: int):
                     SELECT m.msg_id, m.text_content, m.image_url, m.inline_buttons
                     FROM messages_3db m
                     WHERE m.msg_id <= $1
+                    AND m.msg_id >= $3
                     AND m.msg_id NOT IN (
                         SELECT msg_id FROM send_logs_3db WHERE user_id = $2
                     )
                     ORDER BY m.msg_id ASC;
-                """, current_msg_id, user_id)
+                """, current_msg_id, user_id, MIN_ACTIVE_MSG_ID)
                 
                 for msg in missing_messages:
                     try:
