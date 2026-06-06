@@ -22,6 +22,7 @@ def get_required_env(name: str) -> str:
 BOT_TOKEN = get_required_env("BOT_TOKEN")
 DB_DSN = get_required_env("DB_DSN")
 SECRET_N8N_TOKEN = "super_secret_123"  # Замени на свой сложный пароль и укажи его в n8n
+START_MSG_ID = 36
 MIN_ACTIVE_MSG_ID = 37
 
 def get_asyncpg_dsn(dsn: str) -> str:
@@ -41,13 +42,17 @@ async def run_mailing_in_background(current_msg_id: int):
     Эта функция работает в фоне. Она сама открывает БД, 
     рассылает сообщения с нужными паузами и закрывает БД.
     """
-    if current_msg_id < MIN_ACTIVE_MSG_ID:
+    if current_msg_id < START_MSG_ID:
         print(
             f"⛔ Пропуск рассылки: current_msg_id={current_msg_id} < "
-            f"MIN_ACTIVE_MSG_ID={MIN_ACTIVE_MSG_ID}",
+            f"START_MSG_ID={START_MSG_ID}",
             flush=True,
         )
         return
+
+    # Разовая доотправка msg_id=36: отдаем только 36.
+    # Для рабочего потока 37+ оставляем стандартный нижний порог 37.
+    effective_min_msg_id = START_MSG_ID if current_msg_id == START_MSG_ID else MIN_ACTIVE_MSG_ID
 
     # flush=True заставляет логи появляться мгновенно
     print(f"🔄 Фоновая рассылка (msg_id={current_msg_id}) запущена...", flush=True)
@@ -72,7 +77,7 @@ async def run_mailing_in_background(current_msg_id: int):
                         SELECT msg_id FROM send_logs_3db WHERE user_id = $2
                     )
                     ORDER BY m.msg_id ASC;
-                """, current_msg_id, user_id, MIN_ACTIVE_MSG_ID)
+                """, current_msg_id, user_id, effective_min_msg_id)
                 
                 for msg in missing_messages:
                     try:
@@ -169,11 +174,11 @@ async def trigger_mailing(
     if token != SECRET_N8N_TOKEN:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    if current_msg_id < MIN_ACTIVE_MSG_ID:
+    if current_msg_id < START_MSG_ID:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"current_msg_id must be >= {MIN_ACTIVE_MSG_ID} "
+                f"current_msg_id must be >= {START_MSG_ID} "
                 "for the current campaign"
             ),
         )
