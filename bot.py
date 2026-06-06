@@ -24,7 +24,7 @@ def get_required_env(name: str) -> str:
 
 BOT_TOKEN = get_required_env("BOT_TOKEN")
 DB_DSN = get_required_env("DB_DSN")
-MIN_ACTIVE_MSG_ID = 36
+MIN_ACTIVE_MSG_ID = 37
 
 def get_asyncpg_dsn(dsn: str) -> str:
     return dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -39,30 +39,9 @@ dp.include_router(book_router)
 # ==========================================
 # Формат: (Год, Месяц, День, Час, Минута): ID_сообщения
 SCHEDULE = {
-    (2026, 5, 5, 10, 0): 1,
-    (2026, 5, 6, 10, 0): 2,
-    (2026, 5, 7, 10, 0): 3,
-    (2026, 5, 7, 11, 0): 4,
-    (2026, 5, 8, 10, 0): 5,
-    (2026, 5, 8, 11, 0): 6,
-    (2026, 5, 8, 12, 0): 7,
-    (2026, 5, 9, 10, 0): 8,
-    (2026, 5, 9, 11, 0): 9,
-    (2026, 5, 10, 10, 0): 10,
-    (2026, 5, 10, 11, 0): 11,
-    (2026, 5, 11, 10, 0): 12,
-    (2026, 5, 12, 10, 0): 13,
-    (2026, 5, 13, 12, 0): 14,
-    (2026, 5, 14, 10, 0): 15,
-    (2026, 5, 15, 10, 0): 16,
-    (2026, 5, 16, 10, 0): 17,
-    #(2026, 5, 16, 11, 0): 18,
-    
-    # Раскомментируй и добавляй нужные даты!
-    # (2026, 5, 6, 13, 30): 5,
-    # (2026, 5, 6, 14, 15): 6,
-    # (2026, 5, 7, 10, 0): 7,
-    # (2026, 5, 16, 10, 0): 15,
+    (2026, 6, 6, 19, 0): 37,
+    (2026, 6, 7, 18, 0): 38,
+    (2026, 6, 8, 18, 0): 39,
 }
 
 def get_current_msg_id() -> int:
@@ -83,6 +62,13 @@ async def add_user_to_db(user_id: int, username: str | None):
             VALUES ($1, $2)
             ON CONFLICT (user_id) DO NOTHING;
         """, user_id, username or "")
+
+        # Новый пользователь считается уже получившим стартовый экран кампании (msg_id=36).
+        await conn.execute("""
+            INSERT INTO send_logs_3db (user_id, msg_id)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id, msg_id) DO NOTHING;
+        """, user_id, 36)
         
         # Отсечение 16 мая (msg_id=2 пропускаем — он всегда отправляется новичкам)
         deadline_date = datetime(2026, 5, 16) 
@@ -216,9 +202,8 @@ async def cmd_start(message: Message, bot: Bot): # <-- ВАЖНО: попрос�
     # 3. Старое приветственное сообщение отключено для нового события.
     # Оставляем только новый экран с картинкой и кнопкой "Забрать книгу".
 
-    # 4. Догонка временно отключена для нового проекта.
-    # Важно: не отправляем старые сообщения (1..35) новым пользователям.
-    # asyncio.create_task(catch_up_user(user_id, bot))
+    # 4. Запускаем догонку новых подписчиков по новому потоку (msg_id >= 37).
+    asyncio.create_task(catch_up_user(user_id, bot))
 
 async def main():
     bot = Bot(
