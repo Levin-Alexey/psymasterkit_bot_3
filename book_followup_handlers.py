@@ -166,6 +166,14 @@ async def send_book_followup_prompt(message: Message):
     await message.answer(BOOK_FOLLOWUP_TEXT, reply_markup=build_followup_keyboard())
 
 
+@book_followup_router.callback_query(F.data == "start_book_followup_test")
+async def start_book_followup_from_button(callback: CallbackQuery):
+    await callback.answer()
+    if not callback.message:
+        return
+    await send_book_followup_prompt(callback.message)
+
+
 @book_followup_router.callback_query(F.data.in_({option[1] for option in FOLLOWUP_OPTIONS}))
 async def handle_followup_choice(callback: CallbackQuery):
     await callback.answer()

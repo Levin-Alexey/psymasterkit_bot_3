@@ -81,6 +81,27 @@ async def run_mailing_in_background(current_msg_id: int):
                 
                 for msg in missing_messages:
                     try:
+                        # Проверка: msg_id=46 отправляем только если пользователь прошел мини-тест
+                        if msg['msg_id'] == 46:
+                            test_passed = await conn.fetchval("""
+                                SELECT EXISTS(
+                                    SELECT 1 FROM scheduled_messages
+                                    WHERE user_id = $1
+                                    AND scenario_type = 'book_followup_choice'
+                                    AND status = 'sent'
+                                    LIMIT 1
+                                )
+                            """, user_id)
+                            
+                            if not test_passed:
+                                # Пропускаем msg_id=46 для этого пользователя
+                                # Но отмечаем что мы его обработали (чтобы не попробовать еще раз)
+                                await conn.execute(
+                                    "INSERT INTO send_logs_3db (user_id, msg_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;",
+                                    user_id, 46
+                                )
+                                continue
+                        
                         # 1. СОБИРАЕМ КЛАВИАТУРУ
                         reply_markup = None
                         if msg['inline_buttons']:
