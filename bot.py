@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime
 import asyncpg
+import aiohttp
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -26,7 +27,7 @@ def get_required_env(name: str) -> str:
 
 BOT_TOKEN = get_required_env("BOT_TOKEN")
 DB_DSN = get_required_env("DB_DSN")
-MIN_ACTIVE_MSG_ID = 37
+MIN_ACTIVE_MSG_ID = 45
 
 def get_asyncpg_dsn(dsn: str) -> str:
     return dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -43,14 +44,11 @@ dp.include_router(diagnostic_router)
 # ==========================================
 # Формат: (Год, Месяц, День, Час, Минута): ID_сообщения
 SCHEDULE = {
-    (2026, 6, 6, 19, 0): 37,
-    (2026, 6, 7, 18, 0): 38,
-    (2026, 6, 8, 18, 0): 39,
-    (2026, 6, 9, 10, 0): 40,
-    (2026, 6, 10, 13, 0): 41,
-    (2026, 6, 12, 18, 0): 42,
-    (2026, 6, 14, 18, 0): 43,
-    (2026, 6, 16, 18, 0): 44,
+    (2026, 6, 18, 10, 0): 46,
+    (2026, 6, 18, 11, 0): 47,
+    (2026, 6, 18, 17, 0): 48,
+    (2026, 6, 18, 21, 0): 49,
+   
 }
 
 def get_current_msg_id() -> int:
@@ -72,12 +70,12 @@ async def add_user_to_db(user_id: int, username: str | None):
             ON CONFLICT (user_id) DO NOTHING;
         """, user_id, username or "")
 
-        # Новый пользователь считается уже получившим стартовый экран кампании (msg_id=36).
+        # Записываем msg_id=45 для новых пользователей (текущее сообщение)
         await conn.execute("""
             INSERT INTO send_logs_3db (user_id, msg_id)
             VALUES ($1, $2)
             ON CONFLICT (user_id, msg_id) DO NOTHING;
-        """, user_id, 36)
+        """, user_id, 45)
         
         # Отсечение 16 мая (msg_id=2 пропускаем — он всегда отправляется новичкам)
         deadline_date = datetime(2026, 5, 16) 
@@ -94,11 +92,22 @@ async def add_user_to_db(user_id: int, username: str | None):
         await conn.close()
 
 # ==========================================
-# 2. ФУНКЦИЯ ДОГОНКИ НОВИЧКОВ
+# 2. ФУНКЦИЯ ДОСЫЛКИ
 # ==========================================
 async def catch_up_user(user_id: int, bot: Bot):
-    # Догонка временно отключена: включим, когда подготовим пул сообщений.
-    return
+    """Отправляет пропущенные сообщения через API /mailing"""
+    try:
+        current_msg_id = get_current_msg_id()
+        if current_msg_id <= 0:
+            return
+        
+        url = f"http://127.0.0.1:8000/mailing?current_msg_id={current_msg_id}&user_id={user_id}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                if response.status == 200:
+                    print(f"✅ Досылка для user_id={user_id}: msg_id={current_msg_id}")
+    except Exception as exc:
+        print(f"⚠️  Досылка ошибка: {exc}")
 
 # ==========================================
 # 3. ОБРАБОТЧИК /START
@@ -134,11 +143,8 @@ async def cmd_start(message: Message, bot: Bot): # <-- ВАЖНО: попрос�
     except Exception as exc:
         print(f"❌ Не удалось запланировать follow-up для user_id={user_id}: {exc}")
     
-    # 3. Старое приветственное сообщение отключено для нового события.
-    # Оставляем только новый экран с картинкой и кнопкой "Забрать книгу".
-
-    # 4. Досылка временно отключена. Включим позже перед запуском сценария.
-    # asyncio.create_task(catch_up_user(user_id, bot))
+    # Досылка пропущенных сообщений
+    asyncio.create_task(catch_up_user(user_id, bot))
 
 async def main():
     bot = Bot(

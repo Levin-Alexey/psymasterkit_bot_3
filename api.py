@@ -22,8 +22,9 @@ def get_required_env(name: str) -> str:
 BOT_TOKEN = get_required_env("BOT_TOKEN")
 DB_DSN = get_required_env("DB_DSN")
 SECRET_N8N_TOKEN = "super_secret_123"  # Замени на свой сложный пароль и укажи его в n8n
-START_MSG_ID = 36
-MIN_ACTIVE_MSG_ID = 37
+START_MSG_ID = 45
+MIN_ACTIVE_MSG_ID = 45
+HARD_CATCHUP_MIN_MSG_ID = 45
 
 def get_asyncpg_dsn(dsn: str) -> str:
     # asyncpg accepts postgresql:// or postgres:// schemes.
@@ -37,12 +38,12 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
 
-async def run_mailing_in_background(current_msg_id: int):
+async def run_mailing_in_background(current_msg_id: int, target_user_id: int | None = None):
     """
     Эта функция работает в фоне. Она сама открывает БД, 
     рассылает сообщения с нужными паузами и закрывает БД.
     """
-    if current_msg_id < START_MSG_ID:
+    if current_msg_id < START_MSG_ID or current_msg_id < HARD_CATCHUP_MIN_MSG_ID:
         print(
             f"⛔ Пропуск рассылки: current_msg_id={current_msg_id} < "
             f"START_MSG_ID={START_MSG_ID}",
@@ -50,9 +51,7 @@ async def run_mailing_in_background(current_msg_id: int):
         )
         return
 
-    # Разовая доотправка msg_id=36: отдаем только 36.
-    # Для рабочего потока 37+ оставляем стандартный нижний порог 37.
-    effective_min_msg_id = START_MSG_ID if current_msg_id == START_MSG_ID else MIN_ACTIVE_MSG_ID
+    effective_min_msg_id = max(MIN_ACTIVE_MSG_ID, HARD_CATCHUP_MIN_MSG_ID)
 
     # flush=True заставляет логи появляться мгновенно
     print(f"🔄 Фоновая рассылка (msg_id={current_msg_id}) запущена...", flush=True)
@@ -61,7 +60,13 @@ async def run_mailing_in_background(current_msg_id: int):
         # Открываем свое подключение к базе для фоновой задачи
         conn = await asyncpg.connect(get_asyncpg_dsn(DB_DSN))
         try:
-            users = await conn.fetch("SELECT user_id FROM users_3db WHERE is_active = true")
+            if target_user_id is not None:
+                users = await conn.fetch(
+                    "SELECT user_id FROM users_3db WHERE is_active = true AND user_id = $1",
+                    target_user_id,
+                )
+            else:
+                users = await conn.fetch("SELECT user_id FROM users_3db WHERE is_active = true")
             total_sent = 0
             
             for user in users:
@@ -81,6 +86,10 @@ async def run_mailing_in_background(current_msg_id: int):
                 
                 for msg in missing_messages:
                     try:
+                        # Жесткий предохранитель: не досылать ничего ниже 45.
+                        if msg['msg_id'] < HARD_CATCHUP_MIN_MSG_ID:
+                            continue
+
                         # Проверка: msg_id=46 отправляем только если пользователь прошел мини-тест
                         if msg['msg_id'] == 46:
                             test_passed = await conn.fetchval("""
@@ -195,19 +204,48 @@ async def trigger_mailing(
     if token != SECRET_N8N_TOKEN:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    if current_msg_id < START_MSG_ID:
+    if current_msg_id < START_MSG_ID or current_msg_id < HARD_CATCHUP_MIN_MSG_ID:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"current_msg_id must be >= {START_MSG_ID} "
+                f"current_msg_id must be >= {HARD_CATCHUP_MIN_MSG_ID} "
                 "for the current campaign"
             ),
         )
 
     # Передаем рассылку в фоновую задачу
-    background_tasks.add_task(run_mailing_in_background, current_msg_id)
+    background_tasks.add_task(run_mailing_in_background, current_msg_id, None)
 
     return {
         "status": "ok",
         "message": f"Рассылка до msg_id={current_msg_id} запущена в фоне!"
+    }
+
+
+@app.get("/mailing")
+async def mailing(
+    background_tasks: BackgroundTasks,
+    current_msg_id: int = Query(...),
+    user_id: int | None = Query(default=None),
+):
+    """Запуск досылки: либо всем, либо конкретному пользователю."""
+    if current_msg_id < START_MSG_ID or current_msg_id < HARD_CATCHUP_MIN_MSG_ID:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"current_msg_id must be >= {HARD_CATCHUP_MIN_MSG_ID} "
+                "for the current campaign"
+            ),
+        )
+
+    background_tasks.add_task(run_mailing_in_background, current_msg_id, user_id)
+
+    return {
+        "status": "ok",
+        "message": (
+            f"Рассылка до msg_id={current_msg_id} запущена в фоне "
+            f"для user_id={user_id}."
+            if user_id is not None
+            else f"Рассылка до msg_id={current_msg_id} запущена в фоне для всех пользователей."
+        ),
     }

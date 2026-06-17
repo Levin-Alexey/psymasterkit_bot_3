@@ -30,6 +30,11 @@ DIAGNOSTIC_SIGNUP_CALLBACKS = {
     "diagnostic_signup_2h",
 }
 
+DIAGNOSTIC_SIGNUP_URL = (
+    "https://super-ego.info/skpx/?utm_source=telegram&utm_medium=trafik"
+    "&utm_campaign=lab&utm_content=link"
+)
+
 BOOKING_INTRO_TEXT = (
     "Бесплатный разбор с нашим специалистом длится около 20 минут.\n"
     "Это не жёсткая консультация и не разговор в стиле «что с вами не так». "
@@ -147,7 +152,7 @@ async def schedule_diagnostic_reminders(user_id: int):
             DIAGNOSTIC_REMINDER_20M_SCENARIO,
             REMINDER_20M_TEXT,
             build_inline_buttons_payload(
-                [[{"text": "Пройти разбор", "callback_data": "diagnostic_signup_20m"}]]
+                [[{"text": "Пройти разбор", "url": DIAGNOSTIC_SIGNUP_URL}]]
             ),
         )
 
@@ -162,7 +167,7 @@ async def schedule_diagnostic_reminders(user_id: int):
             DIAGNOSTIC_REMINDER_2H_SCENARIO,
             REMINDER_2H_TEXT,
             build_inline_buttons_payload(
-                [[{"text": "Хочу 20-минутный разбор", "callback_data": "diagnostic_signup_2h"}]]
+                [[{"text": "Хочу 20-минутный разбор", "url": DIAGNOSTIC_SIGNUP_URL}]]
             ),
         )
     finally:
@@ -190,21 +195,32 @@ async def handle_diagnostic_cta(callback: CallbackQuery):
 
 
 @diagnostic_router.callback_query(F.data.in_(DIAGNOSTIC_SIGNUP_CALLBACKS))
-async def start_diagnostic_signup(callback: CallbackQuery, state: FSMContext):
+async def start_diagnostic_signup(callback: CallbackQuery):
     await callback.answer()
     if not callback.message:
         return
 
     user_id = callback.from_user.id
     try:
-        await cancel_pending_diagnostic_reminders(user_id)
-        await mark_user_event(user_id, "diagnostic_signup_started", callback.data)
+        # Отмечаем факт клика по кнопке и перезапускаем таймеры от текущего времени.
+        await mark_user_event(user_id, "diagnostic_signup_clicked", callback.data)
+        await schedule_diagnostic_reminders(user_id)
     except Exception as exc:
-        print(f"❌ Не удалось обновить состояния перед сбором заявки: {exc}")
+        print(f"❌ Не удалось зафиксировать клик/таймеры signup: {exc}")
 
-    await state.update_data(signup_source=callback.data)
-    await callback.message.answer("Напишите, пожалуйста, как к вам обращаться (имя):")
-    await state.set_state(DiagnosticLeadState.waiting_for_name)
+    await callback.message.answer(
+        "Откройте ссылку для записи на разбор:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Записаться на разбор",
+                        url=DIAGNOSTIC_SIGNUP_URL,
+                    )
+                ]
+            ]
+        ),
+    )
 
 
 @diagnostic_router.message(DiagnosticLeadState.waiting_for_name)
