@@ -8,6 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from dotenv import load_dotenv
 
+from book_followup_handlers import cancel_pending_book_followup, send_book_followup_prompt
+
 load_dotenv()
 DB_DSN = os.getenv("DB_DSN")
 
@@ -185,4 +187,11 @@ async def confirm_book_phone(callback: CallbackQuery, state: FSMContext):
         "Желаем вам интересных открытий, неожиданных осознаний и новых взглядов на привычные ситуации ❤️",
         reply_markup=kb_book,
     )
+
+    try:
+        await send_book_followup_prompt(callback.message)
+        await cancel_pending_book_followup(user_id)
+    except Exception as exc:
+        print(f"❌ Не удалось сразу отправить follow-up пользователю {user_id}: {exc}")
+
     await state.clear()

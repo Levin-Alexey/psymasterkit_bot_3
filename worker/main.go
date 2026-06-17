@@ -43,12 +43,26 @@ type Task struct {
 	TextContent   string
 	ImageURL      sql.NullString
 	InlineButtons sql.NullString
+	RetryCount    int
 }
 
 var (
 	botToken   string
 	httpClient = &http.Client{Timeout: 10 * time.Second}
 )
+
+func maskSecret(value string, prefixLen, suffixLen int) string {
+	if value == "" {
+		return "<empty>"
+	}
+
+	runes := []rune(value)
+	if len(runes) <= prefixLen+suffixLen {
+		return "<hidden>"
+	}
+
+	return fmt.Sprintf("%s...%s", string(runes[:prefixLen]), string(runes[len(runes)-suffixLen:]))
+}
 
 func main() {
 	// 1. Загрузка переменных окружения (из файла .env на уровень выше, если нужно)
@@ -64,12 +78,12 @@ func main() {
 	botToken = os.Getenv("BOT_TOKEN")
 	dbDsn := os.Getenv("DB_DSN")
 
-	log.Printf("🔐 BOT_TOKEN: %s...%s", botToken[:10], botToken[len(botToken)-5:])
-	log.Printf("🗄️  DB_DSN: %s...%s", dbDsn[:30], dbDsn[len(dbDsn)-20:])
-
 	if botToken == "" || dbDsn == "" {
 		log.Fatal("❌ BOT_TOKEN или DB_DSN не заданы")
 	}
+
+	log.Printf("🔐 BOT_TOKEN: %s", maskSecret(botToken, 10, 5))
+	log.Printf("🗄️  DB_DSN: %s", maskSecret(dbDsn, 30, 20))
 
 	// Адаптация DSN для стандартного драйвера pq (удаляем postgresql+asyncpg://)
 	dbDsn = strings.Replace(dbDsn, "postgresql+asyncpg://", "postgres://", 1)
@@ -126,10 +140,11 @@ func processQueue(ctx context.Context, db *sql.DB) {
 	defer tx.Rollback()
 
 	// Забираем до 50 сообщений, чье время пришло, блокируя их от других процессов
+	// Включаем как pending, так и failed (если попыток < 3)
 	query := `
-		SELECT id, user_id, text_content, image_url, inline_buttons
+		SELECT id, user_id, text_content, image_url, inline_buttons, COALESCE(retry_count, 0)
 		FROM scheduled_messages
-		WHERE status = 'pending' AND send_at <= NOW()
+		WHERE (status = 'pending' OR (status = 'failed' AND retry_count < 3)) AND send_at <= NOW()
 		ORDER BY send_at ASC
 		LIMIT 50
 		FOR UPDATE SKIP LOCKED;
@@ -144,7 +159,7 @@ func processQueue(ctx context.Context, db *sql.DB) {
 	var tasks []Task
 	for rows.Next() {
 		var t Task
-		if err := rows.Scan(&t.ID, &t.UserID, &t.TextContent, &t.ImageURL, &t.InlineButtons); err != nil {
+		if err := rows.Scan(&t.ID, &t.UserID, &t.TextContent, &t.ImageURL, &t.InlineButtons, &t.RetryCount); err != nil {
 			log.Printf("Ошибка парсинга строки: %v", err)
 			continue
 		}
@@ -166,15 +181,36 @@ func processQueue(ctx context.Context, db *sql.DB) {
 
 			success := sendTelegramMessage(t)
 
-			status := "failed"
 			if success {
-				status = "sent"
-			}
-
-			// Обновляем статус в БД вне основной транзакции выборки
-			_, err := db.ExecContext(ctx, "UPDATE scheduled_messages SET status = $1 WHERE id = $2", status, t.ID)
-			if err != nil {
-				log.Printf("Ошибка обновления статуса для задачи %d: %v", t.ID, err)
+				// Успешная отправка: статус sent, обнулить счетчик
+				_, err := db.ExecContext(ctx, "UPDATE scheduled_messages SET status = $1, retry_count = $2 WHERE id = $3", "sent", 0, t.ID)
+				if err != nil {
+					log.Printf("Ошибка обновления статуса для задачи %d: %v", t.ID, err)
+				}
+			} else {
+				// Неудачная отправка: проверяем количество переотправок
+				newRetryCount := t.RetryCount + 1
+				if newRetryCount < 3 {
+					// Возвращаем в pending с новым временем отправки (через 5 минут)
+					_, err := db.ExecContext(ctx,
+						"UPDATE scheduled_messages SET status = $1, retry_count = $2, send_at = NOW() + INTERVAL '5 minutes' WHERE id = $3",
+						"pending", newRetryCount, t.ID)
+					if err != nil {
+						log.Printf("Ошибка переотправки задачи %d: %v", t.ID, err)
+					} else {
+						log.Printf("💾 Задача %d отправлена в очередь переотправки (попытка %d/3)", t.ID, newRetryCount)
+					}
+				} else {
+					// Максимум попыток достигнут, архивируем как окончательно failed
+					_, err := db.ExecContext(ctx,
+						"UPDATE scheduled_messages SET status = $1, retry_count = $2 WHERE id = $3",
+						"permanently_failed", newRetryCount, t.ID)
+					if err != nil {
+						log.Printf("Ошибка архивирования задачи %d: %v", t.ID, err)
+					} else {
+						log.Printf("❌ Задача %d архивирована как окончательно failed (3 попытки исчерпаны)", t.ID)
+					}
+				}
 			}
 		}(task)
 	}

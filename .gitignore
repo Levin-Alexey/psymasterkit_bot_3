@@ -20,6 +20,10 @@ dist/
 *.egg-info/
 .eggs/
 
+bin/
+worker/main
+worker/*.exe
+
 # Test and coverage artifacts
 .pytest_cache/
 .coverage
