@@ -1,5 +1,7 @@
 import asyncio
+import json
 import os
+from pathlib import Path
 from datetime import datetime
 import asyncpg
 import aiohttp
@@ -10,6 +12,8 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
+    InputMediaVideo,
     Message,
 )
 from aiogram.filters import CommandStart
@@ -35,6 +39,7 @@ def get_required_env(name: str) -> str:
 BOT_TOKEN = get_required_env("BOT_TOKEN")
 DB_DSN = get_required_env("DB_DSN")
 MAILING_API_BASE_URL = os.getenv("MAILING_API_BASE_URL", "http://127.0.0.1:8000")
+MEDIA_FILE_IDS_PATH = os.getenv("SPECIAL_MEDIA_FILE_PATH", "media_file_ids.json")
 
 
 def get_asyncpg_dsn(dsn: str) -> str:
@@ -47,6 +52,36 @@ dp.include_router(links_router)
 dp.include_router(book_router)
 dp.include_router(book_followup_router)
 dp.include_router(diagnostic_router)
+
+
+def load_media_group() -> list[InputMediaPhoto | InputMediaVideo]:
+    file_path = Path(MEDIA_FILE_IDS_PATH)
+    if not file_path.exists():
+        return []
+
+    try:
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    media_group: list[InputMediaPhoto | InputMediaVideo] = []
+    for item in data.get("photos", []):
+        file_id = item.get("file_id")
+        if file_id:
+            media_group.append(InputMediaPhoto(media=file_id))
+
+    for item in data.get("videos", []):
+        file_id = item.get("file_id")
+        if file_id:
+            media_group.append(InputMediaVideo(media=file_id, supports_streaming=True))
+
+    return media_group
+
+
+async def send_motivation_media(bot: Bot, chat_id: int) -> None:
+    media_group = load_media_group()
+    if media_group:
+        await bot.send_media_group(chat_id=chat_id, media=media_group)
 
 
 # Формат: (Год, Месяц, День, Час, Минута): ID_сообщения
@@ -177,18 +212,56 @@ async def cmd_start(
 
 
 @dp.callback_query(F.data == "motivation_stagnation")
-async def handle_motivation_stagnation(callback: CallbackQuery):
+async def handle_motivation_stagnation(callback: CallbackQuery, bot: Bot):
     await callback.answer()
+    if not callback.message:
+        return
+
+    await send_motivation_media(bot, callback.from_user.id)
+    await callback.message.answer(
+        "<b>Мы привыкли думать, что дело в нас самих:</b> мол, недостаточно "
+        "силы воли, плохо старались, поленились.\n\n"
+        "Но правда в том, что даже самый мощный заряд энергии неизбежно "
+        "угаснет, если вариться в нем в полном одиночестве. Вспомните: "
+        "когда вы возвращаетесь в свой обычный круг общения, к своим "
+        "привычным заботам, где никто не разделяет ваши интересы и мысли — "
+        "этот внутренний огонь просто задыхается без поддержки.\n\n"
+        "<b>Одному расти невероятно тяжело</b>. Когда нет поля "
+        "единомышленников, нет живого зеркала и тех, кто идет рядом, "
+        "любая искра гаснет под грузом быта 💔\n\n"
+        "Именно поэтому <b>мы создали пространство, где этот закон больше "
+        "не работает.</b> Это не просто чат и не курс. Это живое поле, "
+        "устроенное совсем по-другому — так, чтобы в нем не нужно было "
+        "пахать, доказывать что-то или тащить всё на себе.\n\n"
+        "Там работает совершенно другая механика, которая бережно держит "
+        "вас в ресурсе, и <b>помогает шаг за шагом менять жизнь</b> даже "
+        "тогда, когда вокруг штормит ⤵️\n\n"
+        "<b>Хотите узнать, что это за место и как оно работает?</b>",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Да, покажите подробности",
+                        url="https://super-ego.info/dar/",
+                    )
+                ]
+            ]
+        ),
+    )
 
 
 @dp.callback_query(F.data == "motivation_routine")
-async def handle_motivation_routine(callback: CallbackQuery):
+async def handle_motivation_routine(callback: CallbackQuery, bot: Bot):
     await callback.answer()
+    if callback.message:
+        await send_motivation_media(bot, callback.from_user.id)
 
 
 @dp.callback_query(F.data == "motivation_easy_goals")
-async def handle_motivation_easy_goals(callback: CallbackQuery):
+async def handle_motivation_easy_goals(callback: CallbackQuery, bot: Bot):
     await callback.answer()
+    if callback.message:
+        await send_motivation_media(bot, callback.from_user.id)
 
 
 @dp.callback_query(F.data == "watch_meeting_recording")
