@@ -16,7 +16,8 @@ async def cmd_ticket(message: Message):
     await message.answer(
         "Открыть страницу покупки билета на Open Day:",
         reply_markup=build_link_keyboard(
-            button_text="Открыть билет", url="https://super-ego.info/openday2026/?src=vt"
+            button_text="Открыть билет",
+            url="https://super-ego.info/openday2026/?src=vt",
         ),
     )
 
@@ -37,5 +38,16 @@ async def cmd_question(message: Message):
         "Открыть чат поддержки:",
         reply_markup=build_link_keyboard(
             button_text="Задать вопрос", url="https://t.me/mkhelper"
+        ),
+    )
+
+
+@links_router.message(Command("darlandig"))
+async def cmd_dar_landing(message: Message):
+    await message.answer(
+        "Узнайте подробнее о сообществе DAR:",
+        reply_markup=build_link_keyboard(
+            button_text="Узнать подробнее",
+            url="https://super-ego.info/dar/",
         ),
     )
