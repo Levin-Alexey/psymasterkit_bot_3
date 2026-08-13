@@ -3,10 +3,15 @@ import os
 from datetime import datetime
 import asyncpg
 import aiohttp
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from aiogram.filters import CommandStart
 from dotenv import load_dotenv
 
@@ -132,13 +137,13 @@ async def cmd_start(
             [
                 InlineKeyboardButton(
                     text="Смотреть запись встречи",
-                    url="https://ya.ru",
+                    callback_data="watch_meeting_recording",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="Узнать подробности и вступить в DAR",
-                    url="https://ya.ru",
+                    url="https://super-ego.info/dar/",
                 )
             ],
         ]
@@ -160,6 +165,30 @@ async def cmd_start(
 
     # Досылка пропущенных сообщений
     _catch_up_task = asyncio.create_task(catch_up_user(user_id))
+
+
+@dp.callback_query(F.data == "watch_meeting_recording")
+async def show_meeting_recording_options(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "Выберите, где посмотреть запись встречи:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Смотреть на YouTube",
+                        url="https://youtu.be/Jvkl7wwa0Z0",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Смотреть в VK",
+                        url="https://vkvideo.ru/video-90499927_456240086",
+                    )
+                ],
+            ]
+        ),
+    )
 
 
 async def main():
