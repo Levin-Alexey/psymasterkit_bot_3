@@ -293,8 +293,38 @@ async def handle_motivation_routine(callback: CallbackQuery, bot: Bot):
 @dp.callback_query(F.data == "motivation_easy_goals")
 async def handle_motivation_easy_goals(callback: CallbackQuery, bot: Bot):
     await callback.answer()
-    if callback.message:
-        await send_motivation_media(bot, callback.from_user.id)
+    if not callback.message:
+        return
+
+    await send_motivation_media(bot, callback.from_user.id)
+    await callback.message.answer(
+        "<b>За этой фразой всегда стоит дикая усталость.</b> Вы же помните "
+        "это состояние, когда вроде бы всё делаешь правильно, но каждый "
+        "шаг через не могу, через стиснутые зубы? И даже когда цель наконец-то "
+        "достигается, вместо радости внутри только пустота и мысль: «Я больше "
+        "так не могу».\n\n"
+        "Нам годами вбивали в голову, что по-другому просто не бывает — мол, "
+        "хочешь результатов, паши, терпи и выгорай. И мы привыкли тащить этот "
+        "груз, искренне веря, что легко бывает только у других.\n\n"
+        "💔Но цена такого «успеха» — разбитые нервы и ощущение, что жизнь "
+        "проходит мимо, пока вы в очередной раз «пробиваете головой стену».\n\n"
+        "<b>На самом деле вам не нужно больше бороться с собой.</b> Просто в "
+        "одиночку очень трудно выйти из этого сценария и поверить, что можно "
+        "жить иначе. Именно поэтому мы <b>создали пространство, где всё "
+        "устроено по-другому</b> - так, чтобы приходить к своим целям через "
+        "ресурс, а не через выгорание.\n\n"
+        "<b>Хотите узнать как именно работает этот подход и что это за место?</b> ⤵️",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Посмотреть подробности",
+                        url="https://super-ego.info/dar/",
+                    )
+                ]
+            ]
+        ),
+    )
 
 
 @dp.callback_query(F.data == "watch_meeting_recording")
