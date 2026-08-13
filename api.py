@@ -33,6 +33,14 @@ SECRET_N8N_TOKEN = "super_secret_123"  # Замени на свой сложны
 START_MSG_ID = 1
 MIN_ACTIVE_MSG_ID = 1
 SPECIAL_MEDIA_MESSAGE_ID = int(os.getenv("SPECIAL_MEDIA_MESSAGE_ID", "1"))
+SPECIAL_MEDIA_MESSAGE_IDS = {
+    int(item.strip())
+    for item in os.getenv(
+        "SPECIAL_MEDIA_MESSAGE_IDS",
+        str(SPECIAL_MEDIA_MESSAGE_ID),
+    ).split(",")
+    if item.strip()
+}
 SPECIAL_MEDIA_FILE_PATH = os.getenv("SPECIAL_MEDIA_FILE_PATH", "media_file_ids.json")
 
 
@@ -50,7 +58,7 @@ bot = Bot(
 )
 
 
-def load_special_media_items() -> list[dict]:
+def load_special_media_items(message_id: int | None = None) -> list[dict]:
     file_path = Path(SPECIAL_MEDIA_FILE_PATH)
     if not file_path.exists():
         return []
@@ -61,6 +69,13 @@ def load_special_media_items() -> list[dict]:
         return []
 
     items = []
+
+    if message_id == 2 and data.get("carousel_2"):
+        for item in data.get("carousel_2", []):
+            if item.get("file_id"):
+                items.append({"type": "photo", "file_id": item["file_id"]})
+        return items
+
     for item in data.get("photos", []):
         if item.get("file_id"):
             items.append({"type": "photo", "file_id": item["file_id"]})
@@ -85,7 +100,7 @@ def build_special_media_group(items: list[dict]):
     return media
 
 
-SPECIAL_MEDIA_ITEMS = load_special_media_items()
+SPECIAL_MEDIA_ITEMS = load_special_media_items(SPECIAL_MEDIA_MESSAGE_ID)
 
 
 async def run_mailing_in_background(
@@ -173,10 +188,11 @@ async def run_mailing_in_background(
                         # БРОНЯ: чистим текстовые слеши \n в реальные абзацы
                         clean_text = msg["text_content"].replace("\\n", "\n")
 
-                        if msg["msg_id"] == SPECIAL_MEDIA_MESSAGE_ID:
+                        if msg["msg_id"] in SPECIAL_MEDIA_MESSAGE_IDS:
+                            media_items = load_special_media_items(msg["msg_id"])
                             photo_items = [
                                 item
-                                for item in SPECIAL_MEDIA_ITEMS
+                                for item in media_items
                                 if item["type"] == "photo"
                             ]
                             media_group = build_special_media_group(photo_items)
