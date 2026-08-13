@@ -42,7 +42,7 @@ async def cmd_question(message: Message):
     )
 
 
-@links_router.message(Command("darlandig"))
+@links_router.message(Command("darlanding"))
 async def cmd_dar_landing(message: Message):
     await message.answer(
         "Узнайте подробнее о сообществе DAR:",
