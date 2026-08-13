@@ -253,8 +253,41 @@ async def handle_motivation_stagnation(callback: CallbackQuery, bot: Bot):
 @dp.callback_query(F.data == "motivation_routine")
 async def handle_motivation_routine(callback: CallbackQuery, bot: Bot):
     await callback.answer()
-    if callback.message:
-        await send_motivation_media(bot, callback.from_user.id)
+    if not callback.message:
+        return
+
+    await send_motivation_media(bot, callback.from_user.id)
+    await callback.message.answer(
+        "<b>Самое обидное в этот момент — даже не сама рутина.</b> А то "
+        "внутреннее разочарование, когда снова ловишь себя на мысли: "
+        "«Я же искренне старалась, почему опять всё вернулось к нулю?».\n\n"
+        "Начинается привычный внутренний диалог: мол, опять не хватило "
+        "характера, опять сдалась. <b>Но дело вовсе не в вашей силе воли.</b> "
+        "Попробуйте разжечь костер посреди ледяного шторма в полном "
+        "одиночестве — он неизбежно потухнет, сколько ни подкладывай ветки. "
+        "Точно так же любой внутренний импульс задыхается, когда вы "
+        "возвращаетесь в привычную среду, где никто не разделяет ваши мысли "
+        "и стремления.\n\n"
+        "<b>Одной удерживать этот фокус и двигаться вперед - колоссальный, "
+        "изматывающий труд.</b>\n\n"
+        "Именно поэтому ваши грандиозные планы так и остаются планами, а "
+        "реальность не меняется месяцами. Вы просто пытаетесь прийти к "
+        "результатам поодиночке, тратя все силы на борьбу с системой.\n\n"
+        "Но можно иначе. <b>Мы создали пространство, где реальные результаты "
+        "случаются сами - за счет правильного поля и поддержки, где вы больше "
+        "не сдаетесь через пару месяцев.\n\n"
+        "Показываем, как это работает изнутри</b> ⤵️",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Узнать подробности",
+                        url="https://super-ego.info/dar/",
+                    )
+                ]
+            ]
+        ),
+    )
 
 
 @dp.callback_query(F.data == "motivation_easy_goals")
