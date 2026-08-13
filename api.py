@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+from pathlib import Path
 import asyncpg
 import traceback  # <--- ВАЖНО: для отлова скрытых ошибок
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
@@ -10,6 +11,8 @@ from aiogram.enums import ParseMode
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    InputMediaPhoto,
+    InputMediaVideo,
 )
 from dotenv import load_dotenv
 
@@ -30,6 +33,7 @@ SECRET_N8N_TOKEN = "super_secret_123"  # Замени на свой сложны
 START_MSG_ID = 1
 MIN_ACTIVE_MSG_ID = 1
 SPECIAL_MEDIA_MESSAGE_ID = int(os.getenv("SPECIAL_MEDIA_MESSAGE_ID", "1"))
+SPECIAL_MEDIA_FILE_PATH = os.getenv("SPECIAL_MEDIA_FILE_PATH", "media_file_ids.json")
 
 
 def get_asyncpg_dsn(dsn: str) -> str:
@@ -44,6 +48,44 @@ bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
+
+
+def load_special_media_items() -> list[dict]:
+    file_path = Path(SPECIAL_MEDIA_FILE_PATH)
+    if not file_path.exists():
+        return []
+
+    try:
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    items = []
+    for item in data.get("photos", []):
+        if item.get("file_id"):
+            items.append({"type": "photo", "file_id": item["file_id"]})
+    for item in data.get("videos", []):
+        if item.get("file_id"):
+            items.append({"type": "video", "file_id": item["file_id"]})
+    return items
+
+
+def build_special_media_group(items: list[dict]):
+    media = []
+    for item in items:
+        if item["type"] == "photo":
+            media.append(InputMediaPhoto(media=item["file_id"]))
+        elif item["type"] == "video":
+            media.append(
+                InputMediaVideo(
+                    media=item["file_id"],
+                    supports_streaming=True,
+                )
+            )
+    return media
+
+
+SPECIAL_MEDIA_ITEMS = load_special_media_items()
 
 
 async def run_mailing_in_background(
@@ -130,6 +172,37 @@ async def run_mailing_in_background(
 
                         # БРОНЯ: чистим текстовые слеши \n в реальные абзацы
                         clean_text = msg["text_content"].replace("\\n", "\n")
+
+                        if msg["msg_id"] == SPECIAL_MEDIA_MESSAGE_ID:
+                            photo_items = [
+                                item
+                                for item in SPECIAL_MEDIA_ITEMS
+                                if item["type"] == "photo"
+                            ]
+                            media_group = build_special_media_group(photo_items)
+                            if media_group:
+                                await bot.send_media_group(
+                                    chat_id=user_id,
+                                    media=media_group,
+                                )
+                                await asyncio.sleep(0.6)
+                                await bot.send_message(
+                                    chat_id=user_id,
+                                    text=clean_text,
+                                    reply_markup=reply_markup,
+                                )
+                                await conn.execute(
+                                    """
+                                    INSERT INTO send_logs_3db (user_id, msg_id)
+                                    VALUES ($1, $2)
+                                    ON CONFLICT DO NOTHING;
+                                    """,
+                                    user_id,
+                                    msg["msg_id"],
+                                )
+                                total_sent += 1
+                                await asyncio.sleep(2)
+                                continue
 
                         # 2. ОТПРАВЛЯЕМ СООБЩЕНИЕ
                         if msg["image_url"]:

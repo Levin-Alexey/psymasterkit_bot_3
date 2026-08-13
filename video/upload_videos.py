@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -10,8 +11,12 @@ from aiogram.types import FSInputFile
 from dotenv import load_dotenv
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parent
+PHOTO_DIR = PROJECT_DIR / "foto"
 ROOT_ENV = SCRIPT_DIR.parent / ".env"
+MEDIA_FILE_IDS_PATH = PROJECT_DIR / "media_file_ids.json"
 
 
 def load_environment() -> None:
@@ -55,6 +60,26 @@ def iter_video_files() -> list[Path]:
     )
 
 
+def load_existing_media_ids() -> dict:
+    if not MEDIA_FILE_IDS_PATH.exists():
+        return {"videos": [], "photos": []}
+
+    try:
+        data = json.loads(MEDIA_FILE_IDS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"videos": [], "photos": []}
+
+    return data
+
+
+def iter_photo_files() -> list[Path]:
+    return sorted(
+        file_path
+        for file_path in PHOTO_DIR.iterdir()
+        if file_path.is_file() and file_path.suffix.lower() in PHOTO_EXTENSIONS
+    )
+
+
 def get_proxy_url() -> str | None:
     for env_name in ("PROXY_URL", "HTTPS_PROXY", "HTTP_PROXY"):
         value = os.getenv(env_name, "").strip()
@@ -72,8 +97,9 @@ async def main() -> None:
     proxy_url = get_proxy_url()
 
     video_files = iter_video_files()
-    if not video_files:
-        raise RuntimeError(f"No video files found in {SCRIPT_DIR}")
+    photo_files = iter_photo_files()
+    if not video_files and not photo_files:
+        raise RuntimeError("No video or photo files found")
 
     session = AiohttpSession(proxy=proxy_url) if proxy_url else None
     bot = Bot(
@@ -84,6 +110,7 @@ async def main() -> None:
 
     try:
         print(f"Found {len(video_files)} video files in {SCRIPT_DIR}")
+        print(f"Found {len(photo_files)} photo files in {PHOTO_DIR}")
         print(f"Sending to chat: {target_chat}")
         if proxy_url:
             print("Proxy: enabled")
@@ -98,6 +125,24 @@ async def main() -> None:
                 "VIDEO_PUBLIC_CHAT_USERNAME is not set. "
                 "Only message ids will be printed."
             )
+
+        existing_media_ids = load_existing_media_ids()
+        uploaded_videos = existing_media_ids.get("videos", [])
+        uploaded_photos = []
+
+        for photo_path in photo_files:
+            sent_message = await bot.send_photo(
+                chat_id=target_chat,
+                photo=FSInputFile(photo_path),
+                caption=photo_path.name,
+            )
+            photo = sent_message.photo[-1] if sent_message.photo else None
+            if photo:
+                uploaded_photos.append(
+                    {"file_name": photo_path.name, "file_id": photo.file_id}
+                )
+                print(f"Photo: {photo_path.name}")
+                print(f"File ID: {photo.file_id}")
 
         for video_path in video_files:
             sent_message = await bot.send_video(
@@ -117,6 +162,12 @@ async def main() -> None:
             print(f"Message ID: {sent_message.message_id}")
             if sent_message.video:
                 print(f"File ID: {sent_message.video.file_id}")
+                uploaded_videos.append(
+                    {
+                        "file_name": video_path.name,
+                        "file_id": sent_message.video.file_id,
+                    }
+                )
             if public_link:
                 print(f"Link: {public_link}")
             else:
@@ -124,6 +175,16 @@ async def main() -> None:
                     "Link: unavailable for private chat. "
                     "Set VIDEO_PUBLIC_CHAT_USERNAME for public links."
                 )
+
+        existing_media_ids["videos"] = uploaded_videos
+        if uploaded_photos:
+            existing_media_ids["photos"] = uploaded_photos
+
+        MEDIA_FILE_IDS_PATH.write_text(
+            json.dumps(existing_media_ids, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Saved media IDs to {MEDIA_FILE_IDS_PATH}")
     finally:
         await bot.session.close()
 

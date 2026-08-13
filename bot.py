@@ -65,7 +65,7 @@ def load_media_group() -> list[InputMediaPhoto | InputMediaVideo]:
         return []
 
     media_group: list[InputMediaPhoto | InputMediaVideo] = []
-    for item in data.get("photos", []):
+    for item in data.get("motivation_photos", []):
         file_id = item.get("file_id")
         if file_id:
             media_group.append(InputMediaPhoto(media=file_id))
