@@ -6,7 +6,12 @@ import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -223,7 +228,11 @@ async def start_diagnostic_signup(callback: CallbackQuery):
     )
 
 
-@diagnostic_router.message(DiagnosticLeadState.waiting_for_name)
+# Временный модуль сбора имени и телефона отключен для новой версии бота.
+@diagnostic_router.message(
+    F.chat.id == -1,
+    DiagnosticLeadState.waiting_for_name,
+)
 async def process_diagnostic_name(message: Message, state: FSMContext):
     name = (message.text or "").strip()
     if not name:
@@ -235,7 +244,11 @@ async def process_diagnostic_name(message: Message, state: FSMContext):
     await state.set_state(DiagnosticLeadState.waiting_for_phone)
 
 
-@diagnostic_router.message(DiagnosticLeadState.waiting_for_phone)
+# Временный модуль сбора имени и телефона отключен для новой версии бота.
+@diagnostic_router.message(
+    F.chat.id == -1,
+    DiagnosticLeadState.waiting_for_phone,
+)
 async def process_diagnostic_phone(message: Message, state: FSMContext):
     phone = (message.text or "").strip()
     if not phone:
@@ -259,11 +272,15 @@ async def process_diagnostic_phone(message: Message, state: FSMContext):
             ],
         ]
     )
-    await message.answer(f"Вы ввели номер: <b>{phone}</b>\n\nВсё верно?", reply_markup=kb)
+    await message.answer(
+        f"Вы ввели номер: <b>{phone}</b>\n\nВсё верно?", reply_markup=kb
+    )
     await state.set_state(DiagnosticLeadState.waiting_for_confirmation)
 
 
+# Временный модуль сбора имени и телефона отключен для новой версии бота.
 @diagnostic_router.callback_query(
+    F.data == "__disabled_diagnostic_phone_edit__",
     F.data == "diagnostic_phone_edit",
     DiagnosticLeadState.waiting_for_confirmation,
 )
@@ -276,7 +293,9 @@ async def edit_diagnostic_phone(callback: CallbackQuery, state: FSMContext):
     await state.set_state(DiagnosticLeadState.waiting_for_phone)
 
 
+# Временный модуль сбора имени и телефона отключен для новой версии бота.
 @diagnostic_router.callback_query(
+    F.data == "__disabled_diagnostic_phone_confirm__",
     F.data == "diagnostic_phone_confirm",
     DiagnosticLeadState.waiting_for_confirmation,
 )
