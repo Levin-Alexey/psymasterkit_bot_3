@@ -89,6 +89,7 @@ async def send_motivation_media(bot: Bot, chat_id: int) -> None:
 SCHEDULE = {
     (2026, 8, 14, 12, 0): 1,
     (2026, 8, 15, 12, 0): 2,
+    (2026, 8, 16, 12, 0): 3,
 }
 
 

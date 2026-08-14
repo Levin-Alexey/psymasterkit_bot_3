@@ -76,6 +76,12 @@ def load_special_media_items(message_id: int | None = None) -> list[dict]:
                 items.append({"type": "photo", "file_id": item["file_id"]})
         return items
 
+    if message_id == 3 and data.get("carousel_3"):
+        for item in data.get("carousel_3", []):
+            if item.get("file_id"):
+                items.append({"type": "photo", "file_id": item["file_id"]})
+        return items
+
     for item in data.get("photos", []):
         if item.get("file_id"):
             items.append({"type": "photo", "file_id": item["file_id"]})
